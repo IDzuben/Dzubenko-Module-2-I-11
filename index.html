@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Чат на WebSocket</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #chat { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll; margin-bottom: 10px; }
+        #message, #username { width: calc(100% - 100px); }
+        button { width: 80px; margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <h2>Чат</h2>
+    <div>
+        <input id="username" placeholder="Введіть ваше ім'я">
+        <button onclick="setUsername()">Зберегти ім'я</button>
+    </div>
+    <div id="chat"></div>
+    <input id="message" placeholder="Введіть повідомлення">
+    <button onclick="sendMessage()">Надіслати</button>
+
+    <script>
+        let socket;
+        let userName = 'Анонім';
+
+        // Підключення до WebSocket
+        function connectWebSocket() {
+            socket = new WebSocket('ws://localhost:3000');
+
+            socket.onopen = () => {
+                console.log('З’єднання відкрите');
+                if (userName !== 'Анонім') {
+                    socket.send(JSON.stringify({ type: 'setName', name: userName }));
+                }
+            };
+
+            socket.onmessage = (event) => {
+                const chat = document.getElementById('chat');
+                const newMessage = document.createElement('div');
+                newMessage.innerText = event.data;
+                chat.appendChild(newMessage);
+
+                // Показати сповіщення
+                if (document.hidden && Notification.permission === "granted") {
+                    new Notification("Нове повідомлення", { body: event.data });
+                }
+            };
+
+            socket.onerror = (error) => console.error('Помилка WebSocket:', error);
+
+            socket.onclose = () => {
+                console.log('З’єднання втрачено. Перепідключення через 3 секунди...');
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        function setUsername() {
+            const usernameInput = document.getElementById('username');
+            if (usernameInput.value.trim()) {
+                userName = usernameInput.value.trim();
+                socket.send(JSON.stringify({ type: 'setName', name: userName }));
+                alert(`Ім'я збережено: ${userName}`);
+            }
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById('message');
+            const message = messageInput.value.trim();
+            if (message) {
+                socket.send(JSON.stringify({ type: 'message', text: message }));
+                messageInput.value = '';
+            }
+        }
+
+        // Запит дозволу на сповіщення
+        if (Notification.permission !== "granted") {
+            Notification.requestPermission();
+        }
+
+        connectWebSocket();
+    </script>
+</body>
+</html>
