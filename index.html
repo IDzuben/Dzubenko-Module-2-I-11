@@ -7,6 +7,7 @@
         body { font-family: Arial, sans-serif; margin: 20px; }
         #chat { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll; margin-bottom: 10px; }
         #message, #username { width: calc(100% - 100px); }
+        #users { border: 1px solid #ccc; padding: 10px; height: 150px; overflow-y: scroll; margin-bottom: 10px; }
         button { width: 80px; margin-left: 10px; }
     </style>
 </head>
@@ -16,15 +17,16 @@
         <input id="username" placeholder="Введіть ваше ім'я">
         <button onclick="setUsername()">Зберегти ім'я</button>
     </div>
+    <div id="users"></div>
     <div id="chat"></div>
     <input id="message" placeholder="Введіть повідомлення">
     <button onclick="sendMessage()">Надіслати</button>
+    <button onclick="disconnect()">Відключитися</button>
 
     <script>
         let socket;
         let userName = 'Анонім';
 
-        // Підключення до WebSocket
         function connectWebSocket() {
             socket = new WebSocket('ws://localhost:3000');
 
@@ -33,24 +35,32 @@
                 if (userName !== 'Анонім') {
                     socket.send(JSON.stringify({ type: 'setName', name: userName }));
                 }
+                if (Notification.permission !== 'granted') {
+                    Notification.requestPermission();
+                }
             };
 
             socket.onmessage = (event) => {
-                const chat = document.getElementById('chat');
-                const newMessage = document.createElement('div');
-                newMessage.innerText = event.data;
-                chat.appendChild(newMessage);
+                const data = JSON.parse(event.data);
 
-                // Показати сповіщення
-                if (document.hidden && Notification.permission === "granted") {
-                    new Notification("Нове повідомлення", { body: event.data });
+                if (data.type === 'message') {
+                    const chat = document.getElementById('chat');
+                    const newMessage = document.createElement('div');
+                    newMessage.innerText = data.text;
+                    chat.appendChild(newMessage);
+
+                    if (Notification.permission === 'granted') {
+                        new Notification('Нове повідомлення', { body: data.text });
+                    }
+                } else if (data.type === 'activeUsers') {
+                    updateActiveUsers(data.users);
                 }
             };
 
             socket.onerror = (error) => console.error('Помилка WebSocket:', error);
 
             socket.onclose = () => {
-                console.log('З’єднання втрачено. Перепідключення через 3 секунди...');
+                console.log('З’єднання втрачено. Спроба підключення через 3 секунди...');
                 setTimeout(connectWebSocket, 3000);
             };
         }
@@ -73,9 +83,42 @@
             }
         }
 
-        // Запит дозволу на сповіщення
-        if (Notification.permission !== "granted") {
-            Notification.requestPermission();
+        function disconnect() {
+            fetch(`/disconnect?username=${encodeURIComponent(userName)}`)
+                .then((response) => response.text())
+                .then((message) => {
+                    alert(message);
+                    if (socket) {
+                        socket.close();
+                    }
+                    document.getElementById('message').value = 'Ви відключені від чату';
+                    document.getElementById('message').disabled = true;
+                    document.querySelector('button[onclick="sendMessage()"]').disabled = true;
+                })
+                .catch((error) => console.error('Помилка запиту:', error));
+        }
+
+        function updateActiveUsers(users) {
+            const usersDiv = document.getElementById('users');
+            usersDiv.innerHTML = '<h3>Активні користувачі:</h3>';
+            users.forEach(user => {
+                const userDiv = document.createElement('div');
+                userDiv.innerText = user;
+                const banButton = document.createElement('button');
+                banButton.innerText = 'Бан';
+                banButton.onclick = () => banUser(user);
+                userDiv.appendChild(banButton);
+                usersDiv.appendChild(userDiv);
+            });
+        }
+
+        function banUser(username) {
+            fetch(`/ban?username=${encodeURIComponent(username)}`)
+                .then((response) => response.text())
+                .then((message) => {
+                    alert(message);
+                })
+                .catch((error) => console.error('Помилка запиту:', error));
         }
 
         connectWebSocket();
